@@ -22,6 +22,40 @@ namespace WebScrapingInterview.Controllers
             _web = new HtmlWeb();
         }
 
+        // GET api/vacasa
+        [HttpGet]
+        public ActionResult<List<VacasaRentals>> Get([FromQuery] VacasaGet qs)
+        {
+            SetScrapingUrl(qs.City.ToLower());
+            var HtmlDoc = _web.Load(_scrapingUrl);
+            var mainNode = HtmlDoc.DocumentNode.SelectNodes("//div[contains(@class, 'unit-listing')]");
+            List<VacasaRentals> scrapingElements = ProcessScraping(mainNode, qs.City);
+
+            if (qs.MinPrice > 0 || qs.MaxPrice > 0)
+                scrapingElements = FilterByPrice(qs, scrapingElements);
+
+            return scrapingElements;
+        }
+
+        // Remove elements by price
+        private List<VacasaRentals> FilterByPrice(VacasaGet qs, List<VacasaRentals> scrapingElements)
+        {
+            for (int i = 0; i <= scrapingElements.Count - 1; i++)
+            {
+                if (qs.MinPrice > 0 && Decimal.Compare(qs.MinPrice, scrapingElements[i].MinPrice) < 0)
+                {
+                    scrapingElements.RemoveAt(i);
+                }
+
+                if (qs.MaxPrice > 0 && Decimal.Compare(qs.MaxPrice, scrapingElements[i].MaxPrice) < 0)
+                {
+                    scrapingElements.RemoveAt(i);
+                }
+            }
+
+            return scrapingElements;
+        }
+
         // Set the URL to generate scraping
         private void SetScrapingUrl(string city)
         {
@@ -44,15 +78,11 @@ namespace WebScrapingInterview.Controllers
             }
         }
 
-        // GET api/vacasa
-        [HttpGet]
-        public ActionResult<List<VacasaRentals>> Get([FromQuery(Name = "city")] string city = "las condes")
+        // Get elements by scraping or json
+        private List<VacasaRentals> ProcessScraping(dynamic mainNode, string city)
         {
-            SetScrapingUrl(city.ToLower());
             List<VacasaRentals> scrapingElements = new List<VacasaRentals>();
-            var HtmlDoc = _web.Load(_scrapingUrl);
 
-            var mainNode = HtmlDoc.DocumentNode.SelectNodes("//div[contains(@class, 'unit-listing')]");
             var dt = DateTime.Now;
             string currentDay = dt.Day.ToString();
             string currentHour = dt.Hour.ToString();
@@ -72,6 +102,7 @@ namespace WebScrapingInterview.Controllers
             return scrapingElements;
         }
 
+        // Get Data from JSON
         private string GetJson(string filePath)
         {
             string data = System.IO.File.ReadAllText(filePath);
@@ -92,22 +123,22 @@ namespace WebScrapingInterview.Controllers
         {
             List<VacasaRentals> scrapingElements = new List<VacasaRentals>();
 
-            foreach (var nNode in mainNode)
+            foreach (var node in mainNode)
             {
                 try
                 {
-                    string id = nNode.Attributes["data-mini"].Value;
-                    string title = nNode.Element("h2").InnerText;
-                    string price = nNode.SelectSingleNode("//a[contains(@class, 'type-body-small') and contains(@href, '/unit.php?UnitID=" + id + "')]").InnerText;
-                    string image = nNode.SelectSingleNode("//a[contains(@class, 'type-heading-small') and contains(@href, '/unit.php?UnitID=" + id + "')]/img").Attributes["src"].Value;
+                    string id = node.Attributes["data-mini"].Value;
+                    string title = node.Element("h2").InnerText;
+                    string price = node.SelectSingleNode("//a[contains(@class, 'type-body-small') and contains(@href, '/unit.php?UnitID=" + id + "')]").InnerText;
+                    string image = node.SelectSingleNode("//a[contains(@class, 'type-heading-small') and contains(@href, '/unit.php?UnitID=" + id + "')]/img").Attributes["src"].Value;
                     string[] splitedPrice = price.Split("-");
 
                     scrapingElements.Add(new VacasaRentals()
                     {
                         ID = int.Parse(id),
                         Title = title,
-                        MinPrice = splitedPrice[0].Trim().Remove(0, 1),
-                        MaxPrice = splitedPrice[1].Trim().Remove(0, 1),
+                        MinPrice = Convert.ToDecimal(splitedPrice[0].Trim().Remove(0, 1)),
+                        MaxPrice = Convert.ToDecimal(splitedPrice[1].Trim().Remove(0, 1)),
                         MoneySign = price.Trim().Substring(0, 1),
                         Image = image.Remove(0, 2)
                     });
